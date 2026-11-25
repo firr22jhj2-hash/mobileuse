@@ -28,35 +28,45 @@ public final class TaskRunner {
   watchdog.postDelayed(()->{if(generation.get()==token&&running.get()){prefs.edit().putString("last_error","전체 실행 시간 120초 초과로 자동 중지").apply();log(prefs,"시간 제한으로 중지");stop();}},MAX_DURATION_MS);
   ControlService.arm();
   job=pool.submit(()->{
-   String previous="";int repeats=0;int waits=0;
    try{
     Thread.sleep(500);
+    java.util.regex.Matcher matcher=java.util.regex.Pattern.compile("예제\\s*기업\\s*(\\d+)\\s*번?").matcher(task);
+    String target=matcher.find()?"예제 기업 "+matcher.group(1):"";
+    int failures=0;boolean verified=false;
     for(int step=0;step<limit&&running.get()&&generation.get()==token;step++){
-     if(!ControlService.isPublicTestScreen())throw new IllegalStateException("내장 테스트 화면을 열어주세요");
-     String screen=ControlService.inspect();if(screen.trim().isEmpty()||!ControlService.isPublicTestScreen())throw new SecurityException("허용된 공개 테스트 화면이 아닙니다");log(prefs,"화면 텍스트 확인: "+screen.length()+"자");
-     if(ActionPolicy.sensitive(screen))throw new SecurityException("민감한 화면 감지");
-     prefs.edit().putString("last_action","로컬 GPU 응답 대기 ("+(step+1)+"/"+limit+")").apply();log(prefs,"AI 판단 요청 중");
-     OpenAiClient.Decision d=LocalEngine.decide(app,task,screen);
+     if(!ControlService.isPublicTestScreen())throw new SecurityException("내장 테스트 화면을 열어주세요");
+     ControlService.NodeSnapshot snap=ControlService.snapshot();String screen=snap.text.toString();
+     if(screen.isEmpty()||ActionPolicy.sensitive(screen))throw new SecurityException("유효한 노드 없음");
+     if(!target.isEmpty()&&snap.labels.contains(target+" 선택됨")){verified=true;break;}
+     log(prefs,"노드 "+snap.nodes.size()+"개 · 로컬 판단 요청");
+     LocalEngine.NodeDecision d;
+     try{d=LocalEngine.decide(app,task,screen);}catch(Exception e){if(++failures>=2||!continuous)throw e;log(prefs,"응답 오류 재시도");continue;}
      if(!running.get()||generation.get()!=token)break;
-     if(!ControlService.isPublicTestScreen()||!screen.equals(ControlService.inspect()))throw new SecurityException("응답 대기 중 화면 변경 감지");
-     prefs.edit().putInt("step",step+1).putString("last_action",d.action).apply();log(prefs,"AI 판단: "+d.action);
-     if("done".equals(d.action))break;
-     if("wait".equals(d.action)){if(++waits>=2)throw new IllegalStateException("AI가 연속 대기를 요청하여 자동 중지");}
-     else waits=0;
-     String signature=d.action+":"+Math.round(d.x*20)+":"+Math.round(d.y*20);
-     repeats=signature.equals(previous)?repeats+1:0;previous=signature;
-     if(repeats>=2)throw new IllegalStateException("동일 행동 3회 반복 감지로 자동 중지");
-     if("tap".equals(d.action)||d.action.startsWith("scroll")){
-      android.util.DisplayMetrics m=app.getResources().getDisplayMetrics();
-      float x=(float)(d.x*m.widthPixels),y=(float)(d.y*m.heightPixels);
-      float startY="scroll_up".equals(d.action)?m.heightPixels*.75f:"scroll_down".equals(d.action)?m.heightPixels*.25f:y;
-      float endY="scroll_up".equals(d.action)?m.heightPixels*.25f:"scroll_down".equals(d.action)?m.heightPixels*.75f:y;
-      if(!ControlService.gesture(x,startY,x,endY,"tap".equals(d.action)?100:420))throw new IllegalStateException("제어 불가");log(prefs,"제스처 요청 수락");
+     prefs.edit().putInt("step",step+1).putString("last_action",d.getAction()).apply();
+     String action=d.getAction();int id=d.getNodeId();
+     if("done".equals(action)){log(prefs,"모델 종료 요청");break;}
+     if(!ControlService.isPublicTestScreen()||!screen.equals(ControlService.snapshot().text.toString())){if(++failures>=2)throw new IllegalStateException("화면 변경 반복");continue;}
+     boolean ok=false;
+     if("tap".equals(action)){
+      if(!target.isEmpty()){int exact=snap.labels.indexOf(target);if(exact>=0){id=exact+1;}else{id=0;}}
+      if(id>0&&id<=snap.labels.size()&&!snap.labels.get(id-1).endsWith(" 선택됨")){
+       String label=snap.labels.get(id-1);
+       ok=ControlService.clickNode(snap,id);
+       Thread.sleep(500);
+       if(!running.get()||generation.get()!=token)break;
+       ok=ok&&ControlService.snapshot().labels.contains(label+" 선택됨");
+       if(ok){log(prefs,"선택 검증: "+label);if(!target.isEmpty()&&label.equals(target)){verified=true;break;}}
+      }
+     }else if("scroll_down".equals(action)||"scroll_up".equals(action)){
+      ok=ControlService.scrollNode("scroll_down".equals(action));Thread.sleep(500);
+      ok=ok&&!screen.equals(ControlService.snapshot().text.toString());
      }
-     Thread.sleep(1300);
-    if(generation.get()==token){boolean changed=!screen.equals(ControlService.inspect());log(prefs,changed?"화면 텍스트 변화 감지":"화면 텍스트 변화 없음");if(!changed&&!"wait".equals(d.action))break;}
+     if(!ok){log(prefs,"행동 미검증 · 재판단");if(++failures>=2||!continuous)break;}else failures=0;
     }
-    if(running.get()&&generation.get()==token&&prefs.getInt("step",0)>=limit) prefs.edit().putString("last_action",prefs.getString("last_action","")+" (실행 한도 도달)").apply();
+    if(generation.get()==token&&running.get()){
+     prefs.edit().putString("last_action",verified?"목표 검증 성공":"종료 · 목표 미검증").apply();
+     log(prefs,verified?"목표 달성 확인":"목표 달성 미확인");
+    }
    }catch(InterruptedException e){Thread.currentThread().interrupt();}
     catch(Exception e){if(generation.get()==token){String msg=e.getMessage()==null?"실행 오류":e.getMessage();prefs.edit().putString("last_error",msg).apply();log(prefs,"오류: "+msg);}}
     finally{if(generation.get()==token){running.set(false);ControlService.stop();log(prefs,"실행 종료");}}
