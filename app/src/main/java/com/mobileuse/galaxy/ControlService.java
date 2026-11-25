@@ -18,6 +18,7 @@ public final class ControlService extends AccessibilityService {
  @Override public void onDestroy(){stop();active=null;super.onDestroy();}
  static void stop(){stopped.set(true);busy.set(false);}
  static void arm(){stopped.set(false);}
+ static boolean isOwnAppForeground(){ControlService s=active;if(s==null)return false;AccessibilityNodeInfo root=s.getRootInActiveWindow();return root!=null&&root.getPackageName()!=null&&s.getPackageName().contentEquals(root.getPackageName());}
  static String inspect(){
   ControlService s=active;
   if(s==null)return "접근성 서비스를 활성화하세요";
