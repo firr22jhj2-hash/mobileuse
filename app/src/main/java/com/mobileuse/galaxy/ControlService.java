@@ -31,7 +31,7 @@ public final class ControlService extends AccessibilityService {
   floatingStatus=new TextView(this);floatingStatus.setTextColor(Color.WHITE);floatingStatus.setTextSize(11);floatingStatus.setText("Mobile Use 대기 · 여기를 드래그");floating.addView(floatingStatus);
   floatingLog=new TextView(this);floatingLog.setTextColor(0xFFE0E6EF);floatingLog.setTextSize(10);floatingLog.setMaxLines(6);floatingLog.setText("기록 없음");floating.addView(floatingLog);
   LinearLayout buttons=new LinearLayout(this);floating.addView(buttons);
-  Button start=new Button(this);start.setText("1회 실행");buttons.addView(start);
+  Button start=new Button(this);start.setText("작업 실행");buttons.addView(start);
   start.setOnClickListener(v->{if(TaskRunner.isRunning())return;boolean ok=TaskRunner.startPrepared(this);if(!ok)floatingStatus.setText("앱에서 작업/키 입력 및 화면 캡처 승인이 필요합니다");});
   Button stopButton=new Button(this);stopButton.setText("정지");buttons.addView(stopButton);
   stopButton.setOnClickListener(v->{TaskRunner.stop();floatingStatus.setText("긴급 정지됨");});
@@ -43,6 +43,12 @@ public final class ControlService extends AccessibilityService {
  static void stop(){stopped.set(true);busy.set(false);}
  static void arm(){stopped.set(false);}
  static boolean isOwnAppForeground(){ControlService s=active;if(s==null)return false;AccessibilityNodeInfo root=s.getRootInActiveWindow();return root!=null&&root.getPackageName()!=null&&s.getPackageName().contentEquals(root.getPackageName());}
+ static boolean isPublicTestScreen(){
+  ControlService s=active;if(s==null)return false;
+  AccessibilityNodeInfo root=s.getRootInActiveWindow();
+  if(root==null||root.getPackageName()==null)return false;
+  return "com.mobileuse.galaxy.sandbox".contentEquals(root.getPackageName());
+ }
  static String inspect(){
   ControlService s=active;
   if(s==null)return "접근성 서비스를 활성화하세요";
