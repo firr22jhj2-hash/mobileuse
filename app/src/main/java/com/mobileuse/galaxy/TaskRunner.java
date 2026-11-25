@@ -34,13 +34,13 @@ public final class TaskRunner {
     String target=matcher.find()?"예제 기업 "+matcher.group(1):"";
     int failures=0;boolean verified=false;
     for(int step=0;step<limit&&running.get()&&generation.get()==token;step++){
-     if(!ControlService.isPublicTestScreen())throw new SecurityException("내장 테스트 화면을 열어주세요");
+     if(!ControlService.isPublicTestScreen())throw new SecurityException("내장 테스트 또는 허용된 설정 화면을 열어주세요");
      ControlService.NodeSnapshot snap=ControlService.snapshot();String screen=snap.text.toString();
-     if(screen.isEmpty()||ActionPolicy.sensitive(screen))throw new SecurityException("유효한 노드 없음");
+     if((screen.isEmpty()&&SandboxActivity.visible)||ActionPolicy.sensitive(screen))throw new SecurityException("유효한 노드 없음");
      if(!target.isEmpty()&&snap.labels.contains(target+" 선택됨")){verified=true;break;}
      log(prefs,"노드 "+snap.nodes.size()+"개 · 로컬 판단 요청");
      LocalEngine.NodeDecision d;
-     try{d=LocalEngine.decide(app,task,screen);}catch(Exception e){if(++failures>=2||!continuous)throw e;log(prefs,"응답 오류 재시도");continue;}
+     try{d=LocalEngine.decide(app,task,screen.isEmpty()?ControlService.inspect():screen);}catch(Exception e){if(++failures>=2||!continuous)throw e;log(prefs,"응답 오류 재시도");continue;}
      if(!running.get()||generation.get()!=token)break;
      prefs.edit().putInt("step",step+1).putString("last_action",d.getAction()).apply();
      String action=d.getAction();int id=d.getNodeId();
@@ -58,8 +58,8 @@ public final class TaskRunner {
        if(ok){log(prefs,"선택 검증: "+label);if(!target.isEmpty()&&label.equals(target)){verified=true;break;}}
       }
      }else if("scroll_down".equals(action)||"scroll_up".equals(action)){
-      ok=ControlService.scrollNode("scroll_down".equals(action));Thread.sleep(500);
-      ok=ok&&!screen.equals(ControlService.snapshot().text.toString());
+      String prior=ControlService.inspect();ok=ControlService.scrollNode("scroll_down".equals(action));Thread.sleep(500);
+      ok=ok&&!prior.equals(ControlService.inspect());
      }
      if(!ok){log(prefs,"행동 미검증 · 재판단");if(++failures>=2||!continuous)break;}else failures=0;
     }
