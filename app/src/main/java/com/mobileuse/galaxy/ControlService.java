@@ -34,7 +34,7 @@ public final class ControlService extends AccessibilityService {
   Button start=new Button(this);start.setText("작업 실행");buttons.addView(start);
   start.setOnClickListener(v->{if(TaskRunner.isRunning())return;boolean ok=TaskRunner.startPrepared(this);if(!ok)floatingStatus.setText("앱에서 작업/키 입력 및 화면 캡처 승인이 필요합니다");});
   Button stopButton=new Button(this);stopButton.setText("정지");buttons.addView(stopButton);
-  stopButton.setOnClickListener(v->{TaskRunner.stop();floatingStatus.setText("긴급 정지됨");});
+  stopButton.setOnClickListener(v->{TaskRunner.stop();CompanyCollector.stop();floatingStatus.setText("긴급 정지됨");});
   WindowManager.LayoutParams lp=new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,android.graphics.PixelFormat.TRANSLUCENT);
   lp.gravity=Gravity.TOP|Gravity.START;android.content.SharedPreferences placement=getSharedPreferences("overlay_position",MODE_PRIVATE);lp.x=placement.getInt("x",100);lp.y=placement.getInt("y",160);
   floatingStatus.setOnTouchListener(new View.OnTouchListener(){float downX,downY;int originX,originY;public boolean onTouch(View v,MotionEvent event){switch(event.getActionMasked()){case MotionEvent.ACTION_DOWN:downX=event.getRawX();downY=event.getRawY();originX=lp.x;originY=lp.y;return true;case MotionEvent.ACTION_MOVE:lp.x=Math.max(0,originX+Math.round(event.getRawX()-downX));lp.y=Math.max(0,originY+Math.round(event.getRawY()-downY));try{wm.updateViewLayout(floating,lp);}catch(Exception ignored){}return true;case MotionEvent.ACTION_UP:placement.edit().putInt("x",lp.x).putInt("y",lp.y).apply();return true;default:return false;}}});
@@ -47,7 +47,8 @@ public final class ControlService extends AccessibilityService {
   ControlService s=active;if(s==null)return false;
   AccessibilityNodeInfo root=s.getRootInActiveWindow();
   if(root==null||root.getPackageName()==null)return false;
-  return s.getPackageName().contentEquals(root.getPackageName()) && SandboxActivity.visible;
+  String pkg=root.getPackageName().toString();
+  return (s.getPackageName().equals(pkg)&&SandboxActivity.visible)||("com.android.settings".equals(pkg)&&s.getSharedPreferences("local_progress",MODE_PRIVATE).getBoolean("allow_settings_read",false)&&!ActionPolicy.sensitive(inspect()));
  }
  static final class NodeSnapshot {
   final java.util.ArrayList<AccessibilityNodeInfo> nodes=new java.util.ArrayList<>();
@@ -63,7 +64,7 @@ public final class ControlService extends AccessibilityService {
   if(n==null||depth>20||snap.nodes.size()>=100||n.isPassword())return;
   if(n.isVisibleToUser()&&n.isEnabled()&&n.isClickable()&&n.getText()!=null){
    String label=n.getText().toString().trim();
-   if(label.matches("예제 기업 [0-9]+( 선택됨)?")){
+   if(label.matches("예제 기업 [0-9]+( 선택됨)?")||(!SandboxActivity.visible&&!ActionPolicy.sensitive(label)&&label.length()<=100)){
     int id=snap.nodes.size()+1;snap.nodes.add(n);snap.labels.add(label);
     snap.text.append("ID ").append(id).append(": ").append(label).append("\n");
    }
@@ -71,7 +72,7 @@ public final class ControlService extends AccessibilityService {
   for(int i=0;i<n.getChildCount();i++)collect(n.getChild(i),snap,depth+1);
  }
  static boolean clickNode(NodeSnapshot before,int id){
-  if(stopped.get()||!isPublicTestScreen()||id<1||id>before.nodes.size())return false;
+  if(!SandboxActivity.visible||stopped.get()||!isPublicTestScreen()||id<1||id>before.nodes.size())return false;
   NodeSnapshot now=snapshot();
   if(!before.text.toString().equals(now.text.toString()))return false;
   AccessibilityNodeInfo n=now.nodes.get(id-1);
