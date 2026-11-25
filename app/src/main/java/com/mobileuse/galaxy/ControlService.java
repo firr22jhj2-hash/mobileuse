@@ -5,17 +5,37 @@ import android.graphics.Path;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.WindowManager;
+import android.view.Gravity;
+import android.graphics.Color;
+import android.widget.*;
 import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.concurrent.atomic.AtomicBoolean;
 public final class ControlService extends AccessibilityService {
  static volatile ControlService active;
+ private WindowManager wm;private LinearLayout floating;private TextView floatingStatus;private final Handler overlayHandler=new Handler(Looper.getMainLooper());
+ private final Runnable overlayTicker=new Runnable(){public void run(){if(floatingStatus!=null){android.content.SharedPreferences p=getSharedPreferences("local_progress",MODE_PRIVATE);floatingStatus.setText((TaskRunner.isRunning()?"AI 실행 중":"AI 대기")+" | "+p.getString("last_action","없음")+" | "+p.getString("last_error",""));}overlayHandler.postDelayed(this,1000);}};
  static final AtomicBoolean stopped=new AtomicBoolean(true);
  static final AtomicBoolean busy=new AtomicBoolean(false);
  static volatile long lastAction=0;
- @Override protected void onServiceConnected(){active=this;stop();}
+ @Override protected void onServiceConnected(){active=this;stop();showFloating();}
  @Override public void onAccessibilityEvent(AccessibilityEvent e){}
  @Override public void onInterrupt(){stop();}
- @Override public void onDestroy(){stop();active=null;super.onDestroy();}
+ @Override public void onDestroy(){stop();overlayHandler.removeCallbacks(overlayTicker);if(wm!=null&&floating!=null){wm.removeView(floating);floating=null;}active=null;super.onDestroy();}
+ private void showFloating(){
+  if(floating!=null)return;
+  wm=(WindowManager)getSystemService(WINDOW_SERVICE);
+  floating=new LinearLayout(this);floating.setOrientation(LinearLayout.VERTICAL);floating.setPadding(12,8,12,8);floating.setBackgroundColor(0xDD202735);
+  floatingStatus=new TextView(this);floatingStatus.setTextColor(Color.WHITE);floatingStatus.setTextSize(11);floatingStatus.setText("Mobile Use 대기");floating.addView(floatingStatus);
+  LinearLayout buttons=new LinearLayout(this);floating.addView(buttons);
+  Button start=new Button(this);start.setText("1회 실행");buttons.addView(start);
+  start.setOnClickListener(v->{if(TaskRunner.isRunning())return;boolean ok=TaskRunner.startPrepared(this);if(!ok)floatingStatus.setText("앱에서 작업/키 입력 및 화면 캡처 승인이 필요합니다");});
+  Button stopButton=new Button(this);stopButton.setText("정지");buttons.addView(stopButton);
+  stopButton.setOnClickListener(v->{TaskRunner.stop();floatingStatus.setText("긴급 정지됨");});
+  WindowManager.LayoutParams lp=new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,android.graphics.PixelFormat.TRANSLUCENT);
+  lp.gravity=Gravity.TOP|Gravity.END;lp.x=8;lp.y=160;
+  try{wm.addView(floating,lp);overlayHandler.post(overlayTicker);}catch(Exception e){android.util.Log.e("MobileUse","Floating control failed",e);}
+ }
  static void stop(){stopped.set(true);busy.set(false);}
  static void arm(){stopped.set(false);}
  static boolean isOwnAppForeground(){ControlService s=active;if(s==null)return false;AccessibilityNodeInfo root=s.getRootInActiveWindow();return root!=null&&root.getPackageName()!=null&&s.getPackageName().contentEquals(root.getPackageName());}
