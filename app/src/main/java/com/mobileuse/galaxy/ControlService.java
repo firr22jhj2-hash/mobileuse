@@ -47,7 +47,7 @@ public final class ControlService extends AccessibilityService {
   ControlService s=active;if(s==null)return false;
   AccessibilityNodeInfo root=s.getRootInActiveWindow();
   if(root==null||root.getPackageName()==null)return false;
-  return "com.mobileuse.galaxy.sandbox".contentEquals(root.getPackageName());
+  return s.getPackageName().contentEquals(root.getPackageName()) && SandboxActivity.visible;
  }
  static String inspect(){
   ControlService s=active;
