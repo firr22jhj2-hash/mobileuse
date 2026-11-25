@@ -49,6 +49,44 @@ public final class ControlService extends AccessibilityService {
   if(root==null||root.getPackageName()==null)return false;
   return s.getPackageName().contentEquals(root.getPackageName()) && SandboxActivity.visible;
  }
+ static final class NodeSnapshot {
+  final java.util.ArrayList<AccessibilityNodeInfo> nodes=new java.util.ArrayList<>();
+  final java.util.ArrayList<String> labels=new java.util.ArrayList<>();
+  final StringBuilder text=new StringBuilder();
+ }
+ static NodeSnapshot snapshot(){
+  NodeSnapshot snap=new NodeSnapshot();ControlService s=active;
+  if(s!=null&&isPublicTestScreen())collect(s.getRootInActiveWindow(),snap,0);
+  return snap;
+ }
+ private static void collect(AccessibilityNodeInfo n,NodeSnapshot snap,int depth){
+  if(n==null||depth>20||snap.nodes.size()>=100||n.isPassword())return;
+  if(n.isVisibleToUser()&&n.isEnabled()&&n.isClickable()&&n.getText()!=null){
+   String label=n.getText().toString().trim();
+   if(label.matches("예제 기업 [0-9]+( 선택됨)?")){
+    int id=snap.nodes.size()+1;snap.nodes.add(n);snap.labels.add(label);
+    snap.text.append("ID ").append(id).append(": ").append(label).append("\n");
+   }
+  }
+  for(int i=0;i<n.getChildCount();i++)collect(n.getChild(i),snap,depth+1);
+ }
+ static boolean clickNode(NodeSnapshot before,int id){
+  if(stopped.get()||!isPublicTestScreen()||id<1||id>before.nodes.size())return false;
+  NodeSnapshot now=snapshot();
+  if(!before.text.toString().equals(now.text.toString()))return false;
+  AccessibilityNodeInfo n=now.nodes.get(id-1);
+  return !stopped.get()&&n.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+ }
+ static boolean scrollNode(boolean forward){
+  ControlService s=active;if(s==null||stopped.get()||!isPublicTestScreen())return false;
+  return scrollTree(s.getRootInActiveWindow(),forward,0);
+ }
+ private static boolean scrollTree(AccessibilityNodeInfo n,boolean forward,int depth){
+  if(n==null||depth>20||stopped.get())return false;
+  if(n.isVisibleToUser()&&n.isScrollable()&&n.performAction(forward?AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD))return true;
+  for(int i=0;i<n.getChildCount();i++)if(scrollTree(n.getChild(i),forward,depth+1))return true;
+  return false;
+ }
  static String inspect(){
   ControlService s=active;
   if(s==null)return "접근성 서비스를 활성화하세요";
