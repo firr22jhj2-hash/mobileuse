@@ -32,7 +32,7 @@ public final class TaskRunner {
    try{
     Thread.sleep(500);
     for(int step=0;step<limit&&running.get()&&generation.get()==token;step++){
-     if(ControlService.isOwnAppForeground())throw new IllegalStateException("Mobile Use 앱 대신 개인정보 없는 테스트 앱을 열어주세요");
+     if(!ControlService.isPublicTestScreen())throw new IllegalStateException("내장 테스트 화면을 열어주세요");
      String screen=ControlService.inspect();if(screen.trim().isEmpty()||!ControlService.isPublicTestScreen())throw new SecurityException("허용된 공개 테스트 화면이 아닙니다");log(prefs,"화면 텍스트 확인: "+screen.length()+"자");
      if(ActionPolicy.sensitive(screen))throw new SecurityException("민감한 화면 감지");
      prefs.edit().putString("last_action","API 응답 대기 ("+(step+1)+"/"+limit+")").apply();log(prefs,"AI 판단 요청 중");
