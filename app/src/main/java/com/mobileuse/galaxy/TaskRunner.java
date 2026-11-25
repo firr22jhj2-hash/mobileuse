@@ -19,7 +19,7 @@ public final class TaskRunner {
  public static boolean isRunning(){return running.get();}
  public static void stop(){generation.incrementAndGet();running.set(false);Future<?> j=job;if(j!=null)j.cancel(true);ControlService.stop();}
  public static boolean start(Context context,String key,String task,boolean sendImages){
-  if(key==null||key.trim().isEmpty()||!ActionPolicy.safeTask(task)||ControlService.active==null||CaptureService.instance==null||!running.compareAndSet(false,true))return false;
+  if(!LocalEngine.isReady()||!ActionPolicy.safeTask(task)||ControlService.active==null||!running.compareAndSet(false,true))return false;
   final int token=generation.incrementAndGet();
   final int limit=continuous?MAX_STEPS:1;
   final Context app=context.getApplicationContext();
@@ -35,11 +35,8 @@ public final class TaskRunner {
      if(!ControlService.isPublicTestScreen())throw new IllegalStateException("내장 테스트 화면을 열어주세요");
      String screen=ControlService.inspect();if(screen.trim().isEmpty()||!ControlService.isPublicTestScreen())throw new SecurityException("허용된 공개 테스트 화면이 아닙니다");log(prefs,"화면 텍스트 확인: "+screen.length()+"자");
      if(ActionPolicy.sensitive(screen))throw new SecurityException("민감한 화면 감지");
-     prefs.edit().putString("last_action","API 응답 대기 ("+(step+1)+"/"+limit+")").apply();log(prefs,"AI 판단 요청 중");
-     CaptureService capture=CaptureService.instance;
-     if(capture==null)throw new IllegalStateException("화면 캡처가 종료되었습니다");
-     byte[] frame=null;
-     OpenAiClient.Decision d=OpenAiClient.decide(key,task,screen,frame,false);
+     prefs.edit().putString("last_action","로컬 GPU 응답 대기 ("+(step+1)+"/"+limit+")").apply();log(prefs,"AI 판단 요청 중");
+     OpenAiClient.Decision d=LocalEngine.decide(app,task,screen);
      if(!running.get()||generation.get()!=token)break;
      if(!ControlService.isPublicTestScreen()||!screen.equals(ControlService.inspect()))throw new SecurityException("응답 대기 중 화면 변경 감지");
      prefs.edit().putInt("step",step+1).putString("last_action",d.action).apply();log(prefs,"AI 판단: "+d.action);
