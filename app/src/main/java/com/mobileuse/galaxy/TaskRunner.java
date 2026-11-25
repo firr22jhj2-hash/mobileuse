@@ -7,22 +7,26 @@ public final class TaskRunner {
  private static final AtomicInteger generation=new AtomicInteger();
  private static final Handler watchdog=new Handler(Looper.getMainLooper());
  private static volatile Future<?> job;
- private static final int MAX_STEPS=8;
- private static final long MAX_DURATION_MS=90000;
+ private static final int MAX_STEPS=1;
+ private static volatile String preparedKey,preparedTask;
+ private static volatile boolean preparedImages;
+ public static void prepare(String key,String task,boolean images){preparedKey=key;preparedTask=task;preparedImages=images;}
+ public static boolean startPrepared(Context c){return start(c,preparedKey,preparedTask,preparedImages);}
+ private static final long MAX_DURATION_MS=30000;
  public static boolean isRunning(){return running.get();}
  public static void stop(){generation.incrementAndGet();running.set(false);Future<?> j=job;if(j!=null)j.cancel(true);ControlService.stop();}
  public static boolean start(Context context,String key,String task,boolean sendImages){
-  if(!ActionPolicy.safeTask(task)||ControlService.active==null||CaptureService.instance==null||!running.compareAndSet(false,true))return false;
+  if(key==null||key.trim().isEmpty()||!ActionPolicy.safeTask(task)||ControlService.active==null||CaptureService.instance==null||!running.compareAndSet(false,true))return false;
   final int token=generation.incrementAndGet();
   final Context app=context.getApplicationContext();
   final android.content.SharedPreferences prefs=app.getSharedPreferences("local_progress",Context.MODE_PRIVATE);
   prefs.edit().remove("last_error").putString("last_action","준비 중").apply();
-  watchdog.postDelayed(()->{if(generation.get()==token&&running.get()){prefs.edit().putString("last_error","전체 실행 시간 90초 초과로 자동 중지").apply();stop();}},MAX_DURATION_MS);
+  watchdog.postDelayed(()->{if(generation.get()==token&&running.get()){prefs.edit().putString("last_error","전체 실행 시간 30초 초과로 자동 중지").apply();stop();}},MAX_DURATION_MS);
   ControlService.arm();
   job=pool.submit(()->{
    String previous="";int repeats=0;int waits=0;
    try{
-    Thread.sleep(4000);
+    Thread.sleep(500);
     for(int step=0;step<MAX_STEPS&&running.get()&&generation.get()==token;step++){
      if(ControlService.isOwnAppForeground())throw new IllegalStateException("Mobile Use 앱 대신 개인정보 없는 테스트 앱을 열어주세요");
      String screen=ControlService.inspect();
@@ -49,7 +53,7 @@ public final class TaskRunner {
      }
      Thread.sleep(1300);
     }
-    if(running.get()&&generation.get()==token&&prefs.getInt("step",0)>=MAX_STEPS) prefs.edit().putString("last_error","최대 8단계에 도달하여 종료").apply();
+    if(running.get()&&generation.get()==token&&prefs.getInt("step",0)>=MAX_STEPS) prefs.edit().putString("last_action",prefs.getString("last_action","")+" (1회 완료)").apply();
    }catch(InterruptedException e){Thread.currentThread().interrupt();}
     catch(Exception e){if(generation.get()==token)prefs.edit().putString("last_error",e.getMessage()==null?"실행 오류":e.getMessage()).apply();}
     finally{if(generation.get()==token){running.set(false);ControlService.stop();}}
