@@ -25,7 +25,7 @@ public final class CompanyCollector {
   try{if(c.getResponseCode()!=200)throw new IOException("DART HTTP 오류");try(InputStream in=c.getInputStream()){return new JSONObject(new String(in.readAllBytes(),StandardCharsets.UTF_8));}}finally{connection=null;c.disconnect();}
  }
  private static String field(JSONObject j,String k){return j.optString(k,"").trim();}
- private static String csv(String s){if(s==null)s="";if(s.matches("^[=+@-].*"))s="'"+s;return "\""+s.replace("\"","\u0022\u0022")+"\"";}
+ private static String csv(String s){if(s==null)s="";if(s.matches("^[=+@-].*"))s="'"+s;return "\""+s.replace("\"","\"\"")+"\"";}
  private static String row(String... values){StringJoiner j=new StringJoiner(",");for(String v:values)j.add(csv(v));return j.toString()+"\r\n";}
  private static String employees(JSONObject j){if(!"000".equals(j.optString("status")))return "";JSONArray a=j.optJSONArray("list");if(a==null)return "";long total=0;boolean found=false;for(int i=0;i<a.length();i++){JSONObject r=a.optJSONObject(i);if(r==null)continue;String n=field(r,"sm").replace(",","");if(n.matches("[0-9]+")){total+=Long.parseLong(n);found=true;}}return found?Long.toString(total):"";}
  private static String revenue(JSONObject j){if(!"000".equals(j.optString("status")))return "";JSONArray a=j.optJSONArray("list");if(a==null)return "";for(int i=0;i<a.length();i++){JSONObject r=a.optJSONObject(i);if(r==null)continue;String id=field(r,"account_id"),name=field(r,"account_nm"),sj=field(r,"sj_div");if(("IS".equals(sj)||"CIS".equals(sj))&&("ifrs-full_Revenue".equals(id)||"매출액".equals(name)||"수익(매출액)".equals(name))){String v=field(r,"thstrm_amount").replace(",","");if(v.matches("-?[0-9]+"))return v;}}return "";}
